@@ -79,4 +79,4 @@ services:
       - --format=text
       - --cbom=/output/cbom.json
       - --html=/output/index.html
-      - --title=Demo lab: post-quantum readiness report
+      - "--title=Demo lab: post-quantum readiness report"
