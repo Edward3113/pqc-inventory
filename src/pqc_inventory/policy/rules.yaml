@@ -76,3 +76,55 @@ severity:
   classical_fallback_key_exchange: low   # classical group alongside an accepted PQ group
   quantum_vulnerable_certificate: low
   quantum_ready: info
+
+# --- SSH (RFC 4253 algorithm names) --------------------------------------------------------
+ssh:
+  kex:
+    # Harvest-now-decrypt-later applies to SSH exactly as it does to TLS.
+    quantum_ready:
+      - mlkem768x25519-sha256
+      - mlkem768nistp256-sha256
+      - mlkem1024nistp384-sha384
+      - sntrup761x25519-sha512
+      - sntrup761x25519-sha512@openssh.com
+    broken:
+      - diffie-hellman-group1-sha1
+      - diffie-hellman-group14-sha1
+      - diffie-hellman-group-exchange-sha1
+      - rsa1024-sha1
+    # Classical security strength (SP 800-57). Group-exchange is graded at 112 because the
+    # server may pick a 2048-bit group.
+    strength:
+      curve25519-sha256: 128
+      curve25519-sha256@libssh.org: 128
+      ecdh-sha2-nistp256: 128
+      ecdh-sha2-nistp384: 192
+      ecdh-sha2-nistp521: 256
+      diffie-hellman-group14-sha256: 112
+      diffie-hellman-group15-sha512: 128
+      diffie-hellman-group16-sha512: 128
+      diffie-hellman-group17-sha512: 128
+      diffie-hellman-group18-sha512: 192
+      diffie-hellman-group-exchange-sha256: 112
+    # Extension signals that appear in the kex list but aren't key exchange algorithms.
+    pseudo: [ext-info-s, ext-info-c, kex-strict-s-v00@openssh.com, kex-strict-c-v00@openssh.com]
+
+  host_key_algorithms:
+    broken:
+      ssh-rsa: "RSA signatures with SHA-1"
+      ssh-dss: "DSA, 1024-bit and SHA-1"
+    rsa_min_bits: 2048
+
+  ciphers:
+    broken: [3des-cbc, des-cbc, arcfour, arcfour128, arcfour256, blowfish-cbc, cast128-cbc, none]
+    weak_suffix: "-cbc"
+
+  macs:
+    broken_if_contains: ["md5", "-96", "none"]
+    weak: [hmac-sha1, hmac-sha1-etm@openssh.com, umac-64@openssh.com, umac-64-etm@openssh.com]
+
+  # Terrapin (CVE-2023-48795): prefix truncation against ChaCha20-Poly1305 or CBC+EtM,
+  # unless the server supports strict key exchange.
+  terrapin:
+    strict_marker: kex-strict-s-v00@openssh.com
+    vulnerable_ciphers: [chacha20-poly1305@openssh.com]

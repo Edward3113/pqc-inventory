@@ -58,7 +58,7 @@ def test_certificate_ed25519_has_no_hash():
 @pytest.mark.parametrize(
     ("target", "expected"),
     [
-        ("example.com", ("example.com", 443)),
+        ("example.com", ("example.com", None)),
         ("example.com:8443", ("example.com", 8443)),
         ("[::1]:443", ("::1", 443)),
     ],

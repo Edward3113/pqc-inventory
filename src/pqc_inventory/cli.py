@@ -8,16 +8,18 @@ import sys
 import warnings
 
 from pqc_inventory import __version__
-from pqc_inventory.models import TlsScanResult
+from pqc_inventory.models import SshScanResult, TlsScanResult
 from pqc_inventory.policy import load_rules
 from pqc_inventory.policy.engine import STATUS_ORDER, GradeReport, grade
-from pqc_inventory.scanners import scan_tls
+from pqc_inventory.policy.ssh import grade_ssh
+from pqc_inventory.scanners import scan_ssh, scan_tls
 
 # sslyze's bundled trust store contains a legacy root with a non-positive serial number,
 # which makes cryptography emit a deprecation warning on every run. It's noise for users.
 warnings.filterwarnings("ignore", message="Parsed a serial number which wasn't positive")
 
 EXIT_OK, EXIT_SCAN_ERROR, EXIT_POLICY_FAIL = 0, 1, 2
+DEFAULT_PORTS = {"tls": 443, "ssh": 22}
 
 LABELS = {
     "broken": "BROKEN",
@@ -27,15 +29,16 @@ LABELS = {
 }
 
 
-def parse_target(target: str) -> tuple[str, int]:
-    """Accept 'host' or 'host:port' (IPv6 as '[::1]:443')."""
+def parse_target(target: str) -> tuple[str, int | None]:
+    """Accept 'host' or 'host:port' (IPv6 as '[::1]:443'). Port is None if omitted."""
     if target.startswith("["):
         host, _, rest = target[1:].partition("]")
-        return host, int(rest.lstrip(":") or 443)
+        port = rest.lstrip(":")
+        return host, int(port) if port else None
     if target.count(":") == 1:
         host, port = target.split(":")
         return host, int(port)
-    return target, 443
+    return target, None
 
 
 def _probe_line(scan: TlsScanResult) -> str:
@@ -49,13 +52,14 @@ def _probe_line(scan: TlsScanResult) -> str:
     return f"Post-quantum probe: {probe.status} — {probe.reason}"
 
 
-def render_text(scan: TlsScanResult, report: GradeReport) -> str:
+def render_text(scan: TlsScanResult | SshScanResult, report: GradeReport) -> str:
+    protocol = "SSH" if isinstance(scan, SshScanResult) else "TLS"
     lines = [
-        f"pqc-inventory {__version__} — {scan.host}:{scan.port}",
+        f"pqc-inventory {__version__} — {scan.host}:{scan.port} ({protocol})",
         f"Verdict: {LABELS.get(report.verdict, report.verdict.upper())}",
         f"Post-quantum key exchange: {'YES' if report.pq_key_exchange else 'no'}",
         f"Harvest-now-decrypt-later exposure: {'YES' if report.hndl_exposed else 'no'}",
-        _probe_line(scan),
+        f"Server: {scan.banner}" if protocol == "SSH" else _probe_line(scan),
     ]
     if report.earliest_deadline:
         lines.append(f"Earliest NIST IR 8547 deadline: {report.earliest_deadline}")
@@ -70,10 +74,13 @@ def render_text(scan: TlsScanResult, report: GradeReport) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="pqc-inventory",
-        description="Inventory and grade the cryptography a TLS endpoint offers. "
+        description="Inventory and grade the cryptography a TLS or SSH endpoint offers. "
         "Only scan systems you own or are authorized to test.",
     )
-    parser.add_argument("target", help="host or host:port (default port 443)")
+    parser.add_argument("target", help="host or host:port (default port 443 for TLS, 22 for SSH)")
+    parser.add_argument(
+        "-p", "--protocol", choices=["tls", "ssh"], default="tls", help="protocol to scan"
+    )
     parser.add_argument("-o", "--output", help="write output to this file instead of stdout")
     parser.add_argument(
         "-f", "--format", choices=["json", "text"], default="json", help="output format"
@@ -93,14 +100,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     host, port = parse_target(args.target)
-    scan = scan_tls(
-        host,
-        port,
-        pq_probe=not args.no_pq_probe,
-        pq_groups=load_rules()["key_exchange"]["pq_probe_groups"],
-        openssl=args.openssl,
-    )
-    report = grade(scan) if scan.status == "completed" else None
+    port = port or DEFAULT_PORTS[args.protocol]
+    if args.protocol == "ssh":
+        scan = scan_ssh(host, port)
+        report = grade_ssh(scan) if scan.status == "completed" else None
+    else:
+        scan = scan_tls(
+            host,
+            port,
+            pq_probe=not args.no_pq_probe,
+            pq_groups=load_rules()["key_exchange"]["pq_probe_groups"],
+            openssl=args.openssl,
+        )
+        report = grade(scan) if scan.status == "completed" else None
 
     if args.format == "text":
         payload = render_text(scan, report) if report else f"Scan failed: {scan.error}"
@@ -109,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "tool": "pqc-inventory",
                 "version": __version__,
+                "protocol": args.protocol,
                 "scan": scan.to_dict(),
                 "grade": report.to_dict() if report else None,
             },
@@ -120,7 +133,10 @@ def main(argv: list[str] | None = None) -> int:
             fh.write(payload + "\n")
         print(f"Wrote {args.output}", file=sys.stderr)
     else:
-        print(payload)
+        try:
+            print(payload)
+        except BrokenPipeError:  # e.g. piped into `head`; exit quietly like standard tools
+            sys.stderr.close()
 
     if report is None:
         return EXIT_SCAN_ERROR

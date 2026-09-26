@@ -5,8 +5,8 @@
 A scanner that builds a cryptographic inventory of network endpoints and grades each
 algorithm against NIST's post-quantum transition timeline (NIST IR 8547).
 
-> **Status:** Milestone 3 of 7 — single-host TLS inventory, policy grading, and hybrid
-> post-quantum key exchange detection. SSH, range scanning, CycloneDX CBOM output, and the
+> **Status:** Milestone 4 of 7 — TLS and SSH inventory, policy grading, and hybrid
+> post-quantum key exchange detection. Range scanning, CycloneDX CBOM output, and the
 > lab/report pipeline are on the roadmap below.
 
 ## Why
@@ -26,7 +26,37 @@ uv run pqc-inventory example.com -f text                # human-readable graded 
 uv run pqc-inventory 192.168.1.10:8443 -o reports/host.json   # full JSON (scan + grade)
 uv run pqc-inventory example.com --fail-on broken       # exit code 2 if anything is broken
 uv run pqc-inventory example.com --no-pq-probe          # skip the post-quantum probe
+uv run pqc-inventory -p ssh 192.168.1.20 -f text        # SSH (default port 22)
 ```
+
+### SSH scanning
+
+SSH servers list every algorithm they support in their first key exchange message, before
+any authentication. The scanner reads that message and disconnects, so it never sends
+credentials. Host key sizes come from `ssh-keyscan`, which ships with macOS and Linux.
+
+It grades key exchange (including OpenSSH's hybrid post-quantum `sntrup761x25519` and
+`mlkem768x25519`), host key algorithms, ciphers, and MACs. It also checks for the
+Terrapin attack (CVE-2023-48795): servers that offer ChaCha20-Poly1305 or CBC with
+encrypt-then-MAC without strict key exchange are flagged.
+
+Example against a stock OpenSSH 9.6 server:
+
+```
+Verdict: WEAK
+Post-quantum key exchange: YES
+Harvest-now-decrypt-later exposure: no
+Server: SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.19
+
+[P2] WEAK                mac             hmac-sha1
+[P2] WEAK                mac             umac-64-etm@openssh.com
+[P3] QUANTUM-VULNERABLE  key_exchange    curve25519-sha256   (classical fallback)
+[P4] QUANTUM-VULNERABLE  host_key        ssh-ed25519
+[P5] QUANTUM-READY       key_exchange    sntrup761x25519-sha512@openssh.com
+```
+
+OpenSSH is ahead of most of the web here: hybrid post-quantum key exchange has been
+its default since version 9.0.
 
 ### Post-quantum detection requires OpenSSL 3.5+
 
@@ -104,7 +134,7 @@ rather than in code.
 - [x] 1. TLS inventory for a single host
 - [x] 2. Policy engine: grade findings as broken / weak / quantum-vulnerable / quantum-ready
 - [x] 3. Hybrid post-quantum key exchange probe (X25519MLKEM768 via OpenSSL 3.5+)
-- [ ] 4. SSH scanning
+- [x] 4. SSH scanning (key exchange, host keys, ciphers, MACs, Terrapin)
 - [ ] 5. CIDR range scanning with concurrency
 - [ ] 6. CycloneDX 1.6 CBOM + HTML report with prioritized migration list
 - [ ] 7. Docker lab targets, CI scan, GitHub Pages demo report

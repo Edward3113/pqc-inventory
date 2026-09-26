@@ -315,14 +315,8 @@ def grade_certificates(scan: TlsScanResult, rules: dict[str, Any]) -> list[Findi
 # --- entry point ----------------------------------------------------------------------
 
 
-def grade(scan: TlsScanResult, rules: dict[str, Any] | None = None) -> GradeReport:
-    rules = rules or load_rules()
-    findings = (
-        grade_protocols(scan, rules)
-        + grade_cipher_suites(scan, rules)
-        + grade_key_exchange(scan, rules)
-        + grade_certificates(scan, rules)
-    )
+def build_report(findings: list[Finding], pq_probe_status: str | None) -> GradeReport:
+    """Sort findings and compute the summary. Shared by the TLS and SSH graders."""
     findings.sort(key=lambda f: (f.priority, f.category, f.subject))
 
     counts = {s: sum(f.status == s for f in findings) for s in STATUS_ORDER}
@@ -343,8 +337,19 @@ def grade(scan: TlsScanResult, rules: dict[str, Any] | None = None) -> GradeRepo
         verdict,
         hndl_exposed,
         pq_key_exchange,
-        scan.pq_probe.status if scan.pq_probe else None,
+        pq_probe_status,
         min(deadlines) if deadlines else None,
         counts,
         findings,
     )
+
+
+def grade(scan: TlsScanResult, rules: dict[str, Any] | None = None) -> GradeReport:
+    rules = rules or load_rules()
+    findings = (
+        grade_protocols(scan, rules)
+        + grade_cipher_suites(scan, rules)
+        + grade_key_exchange(scan, rules)
+        + grade_certificates(scan, rules)
+    )
+    return build_report(findings, scan.pq_probe.status if scan.pq_probe else None)

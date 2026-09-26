@@ -68,3 +68,28 @@ class TlsScanResult:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass
+class SshHostKey:
+    type: str  # e.g. "ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256"
+    key: PublicKeyInfo
+
+
+@dataclass
+class SshScanResult:
+    host: str
+    port: int
+    scanned_at: str
+    status: str  # "completed" | "error"
+    error: str | None = None
+    banner: str | None = None
+    kex: list[str] = field(default_factory=list)
+    host_key_algorithms: list[str] = field(default_factory=list)
+    ciphers: list[str] = field(default_factory=list)
+    macs: list[str] = field(default_factory=list)
+    compression: list[str] = field(default_factory=list)
+    host_keys: list[SshHostKey] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
