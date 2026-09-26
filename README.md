@@ -5,9 +5,9 @@
 A scanner that builds a cryptographic inventory of network endpoints and grades each
 algorithm against NIST's post-quantum transition timeline (NIST IR 8547).
 
-> **Status:** Milestone 4 of 7 — TLS and SSH inventory, policy grading, and hybrid
-> post-quantum key exchange detection. Range scanning, CycloneDX CBOM output, and the
-> lab/report pipeline are on the roadmap below.
+> **Status:** Milestone 5 of 7 — TLS and SSH inventory across whole networks, with policy
+> grading and hybrid post-quantum detection. CycloneDX CBOM output and the lab/report
+> pipeline are on the roadmap below.
 
 ## Why
 
@@ -28,6 +28,35 @@ uv run pqc-inventory example.com --fail-on broken       # exit code 2 if anythin
 uv run pqc-inventory example.com --no-pq-probe          # skip the post-quantum probe
 uv run pqc-inventory -p ssh 192.168.1.20 -f text        # SSH (default port 22)
 ```
+
+### Scanning a network
+
+```bash
+uv run pqc-inventory 192.168.1.0/24 -f text                     # ports 22 and 443
+uv run pqc-inventory 192.168.1.0/24 --ports 22,443,8443 -f text
+uv run pqc-inventory -i targets.txt -o reports/network.json     # one target per line
+```
+
+A fast concurrent TCP sweep finds open ports first, so the cryptographic scans only run
+against live endpoints. Each open port is classified automatically: SSH servers send
+their banner immediately, while TLS servers wait for the client. Up to four endpoints
+are scanned in parallel (`--workers`).
+
+```
+Endpoints: 8 checked, 5 open, 5 graded, 0 failed
+Worst verdict: WEAK
+Post-quantum key exchange: 3 of 5 endpoints
+Harvest-now-decrypt-later exposure: 2 of 5 endpoints
+
+ENDPOINT                 PROTO VERDICT             PQ KEX  HNDL  DETAIL
+127.0.0.1:2222           ssh   WEAK                yes     no    SSH-2.0-OpenSSH_9.6p1
+127.0.0.1:14433          tls   QUANTUM-VULNERABLE  yes     no
+127.0.0.1:14434          tls   WEAK                no      YES
+```
+
+Safety rails: ranges outside private address space are refused unless you pass
+`--allow-public`, and expansions over 1,024 hosts are refused unless you raise
+`--max-hosts`. With `--fail-on`, the exit code reflects the worst endpoint.
 
 ### SSH scanning
 
@@ -135,7 +164,7 @@ rather than in code.
 - [x] 2. Policy engine: grade findings as broken / weak / quantum-vulnerable / quantum-ready
 - [x] 3. Hybrid post-quantum key exchange probe (X25519MLKEM768 via OpenSSL 3.5+)
 - [x] 4. SSH scanning (key exchange, host keys, ciphers, MACs, Terrapin)
-- [ ] 5. CIDR range scanning with concurrency
+- [x] 5. CIDR range scanning with discovery, protocol auto-detection, and concurrency
 - [ ] 6. CycloneDX 1.6 CBOM + HTML report with prioritized migration list
 - [ ] 7. Docker lab targets, CI scan, GitHub Pages demo report
 

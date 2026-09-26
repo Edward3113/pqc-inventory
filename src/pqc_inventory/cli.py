@@ -8,11 +8,20 @@ import sys
 import warnings
 
 from pqc_inventory import __version__
+from pqc_inventory.batch import BatchResult, run_batch
 from pqc_inventory.models import SshScanResult, TlsScanResult
 from pqc_inventory.policy import load_rules
 from pqc_inventory.policy.engine import STATUS_ORDER, GradeReport, grade
 from pqc_inventory.policy.ssh import grade_ssh
 from pqc_inventory.scanners import scan_ssh, scan_tls
+from pqc_inventory.targets import (
+    DEFAULT_MAX_HOSTS,
+    TargetError,
+    expand_targets,
+    parse_ports,
+    read_target_file,
+    split_host_port,
+)
 
 # sslyze's bundled trust store contains a legacy root with a non-positive serial number,
 # which makes cryptography emit a deprecation warning on every run. It's noise for users.
@@ -31,14 +40,7 @@ LABELS = {
 
 def parse_target(target: str) -> tuple[str, int | None]:
     """Accept 'host' or 'host:port' (IPv6 as '[::1]:443'). Port is None if omitted."""
-    if target.startswith("["):
-        host, _, rest = target[1:].partition("]")
-        port = rest.lstrip(":")
-        return host, int(port) if port else None
-    if target.count(":") == 1:
-        host, port = target.split(":")
-        return host, int(port)
-    return target, None
+    return split_host_port(target)
 
 
 def _probe_line(scan: TlsScanResult) -> str:
@@ -71,15 +73,76 @@ def render_text(scan: TlsScanResult | SshScanResult, report: GradeReport) -> str
     return "\n".join(lines)
 
 
-def main(argv: list[str] | None = None) -> int:
+def render_batch_text(batch: BatchResult) -> str:
+    s = batch.summary
+    lines = [
+        f"pqc-inventory {__version__} — batch scan",
+        f"Endpoints: {s.endpoints_requested} checked, {s.endpoints_open} open, "
+        f"{s.scanned} graded, {s.errors} failed",
+        f"Worst verdict: {LABELS.get(s.worst_verdict, s.worst_verdict.upper())}",
+        f"Post-quantum key exchange: {s.pq_key_exchange} of {s.scanned} endpoints",
+        f"Harvest-now-decrypt-later exposure: {s.hndl_exposed} of {s.scanned} endpoints",
+    ]
+    if s.earliest_deadline:
+        lines.append(f"Earliest NIST IR 8547 deadline: {s.earliest_deadline}")
+    lines += [
+        "",
+        f"{'ENDPOINT':<24} {'PROTO':<5} {'VERDICT':<19} {'PQ KEX':<7} {'HNDL':<5} DETAIL",
+    ]
+    for r in batch.results:
+        endpoint = f"{r.host}:{r.port}"
+        if r.grade is None:
+            lines.append(
+                f"{endpoint:<24} {r.protocol:<5} {'ERROR':<19} {'-':<7} {'-':<5} "
+                f"{(r.scan.error or '')[:60]}"
+            )
+            continue
+        g = r.grade
+        detail = r.scan.banner if isinstance(r.scan, SshScanResult) else ""
+        lines.append(
+            f"{endpoint:<24} {r.protocol:<5} {LABELS.get(g.verdict, g.verdict):<19} "
+            f"{'yes' if g.pq_key_exchange else 'no':<7} {'YES' if g.hndl_exposed else 'no':<5} "
+            f"{detail or ''}"
+        )
+    if not batch.results:
+        lines.append("(no open endpoints found)")
+    return "\n".join(lines)
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pqc-inventory",
-        description="Inventory and grade the cryptography a TLS or SSH endpoint offers. "
+        description="Inventory and grade the cryptography TLS and SSH endpoints offer. "
         "Only scan systems you own or are authorized to test.",
     )
-    parser.add_argument("target", help="host or host:port (default port 443 for TLS, 22 for SSH)")
     parser.add_argument(
-        "-p", "--protocol", choices=["tls", "ssh"], default="tls", help="protocol to scan"
+        "targets",
+        nargs="*",
+        help="hosts, host:port, or CIDR ranges (e.g. 192.168.1.0/24)",
+    )
+    parser.add_argument("-i", "--input", help="file with one target per line")
+    parser.add_argument(
+        "-p",
+        "--protocol",
+        choices=["tls", "ssh"],
+        help="force a protocol (default: TLS for single targets, auto-detect for batches)",
+    )
+    parser.add_argument(
+        "--ports", help="ports to check for each host, e.g. 22,443,8443 (batch default: 22,443)"
+    )
+    parser.add_argument(
+        "--workers", type=int, default=4, help="endpoints scanned in parallel (default 4)"
+    )
+    parser.add_argument(
+        "--max-hosts",
+        type=int,
+        default=DEFAULT_MAX_HOSTS,
+        help=f"refuse to expand more hosts than this (default {DEFAULT_MAX_HOSTS})",
+    )
+    parser.add_argument(
+        "--allow-public",
+        action="store_true",
+        help="allow CIDR ranges outside private address space (only if authorized)",
     )
     parser.add_argument("-o", "--output", help="write output to this file instead of stdout")
     parser.add_argument(
@@ -88,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--fail-on",
         choices=["broken", "weak", "quantum_vulnerable"],
-        help="exit with code 2 if the verdict is this status or worse (for CI gates)",
+        help="exit with code 2 if any verdict is this status or worse (for CI gates)",
     )
     parser.add_argument(
         "--no-pq-probe", action="store_true", help="skip the OpenSSL post-quantum group probe"
@@ -97,11 +160,34 @@ def main(argv: list[str] | None = None) -> int:
         "--openssl", help="path to an OpenSSL 3.5+ binary (default: $PQC_OPENSSL, Homebrew, PATH)"
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    args = parser.parse_args(argv)
+    return parser
 
-    host, port = parse_target(args.target)
-    port = port or DEFAULT_PORTS[args.protocol]
-    if args.protocol == "ssh":
+
+def _emit(payload: str, output: str | None) -> None:
+    if output:
+        with open(output, "w", encoding="utf-8") as fh:
+            fh.write(payload + "\n")
+        print(f"Wrote {output}", file=sys.stderr)
+        return
+    try:
+        print(payload)
+    except BrokenPipeError:  # e.g. piped into `head`; exit quietly like standard tools
+        sys.stderr.close()
+
+
+def _fails(verdict: str, threshold: str | None) -> bool:
+    return bool(
+        threshold
+        and verdict in STATUS_ORDER
+        and STATUS_ORDER.index(verdict) <= STATUS_ORDER.index(threshold)
+    )
+
+
+def run_single(args: argparse.Namespace, spec: str) -> int:
+    protocol = args.protocol or "tls"
+    host, port = parse_target(spec)
+    port = port or DEFAULT_PORTS[protocol]
+    if protocol == "ssh":
         scan = scan_ssh(host, port)
         report = grade_ssh(scan) if scan.status == "completed" else None
     else:
@@ -121,29 +207,60 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "tool": "pqc-inventory",
                 "version": __version__,
-                "protocol": args.protocol,
+                "protocol": protocol,
                 "scan": scan.to_dict(),
                 "grade": report.to_dict() if report else None,
             },
             indent=2,
         )
-
-    if args.output:
-        with open(args.output, "w", encoding="utf-8") as fh:
-            fh.write(payload + "\n")
-        print(f"Wrote {args.output}", file=sys.stderr)
-    else:
-        try:
-            print(payload)
-        except BrokenPipeError:  # e.g. piped into `head`; exit quietly like standard tools
-            sys.stderr.close()
+    _emit(payload, args.output)
 
     if report is None:
         return EXIT_SCAN_ERROR
-    if args.fail_on and report.verdict in STATUS_ORDER:
-        if STATUS_ORDER.index(report.verdict) <= STATUS_ORDER.index(args.fail_on):
-            return EXIT_POLICY_FAIL
-    return EXIT_OK
+    return EXIT_POLICY_FAIL if _fails(report.verdict, args.fail_on) else EXIT_OK
+
+
+def run_many(args: argparse.Namespace, specs: list[str]) -> int:
+    ports = parse_ports(args.ports) if args.ports else None
+    endpoints = expand_targets(specs, ports, args.allow_public, args.max_hosts)
+    print(f"Checking {len(endpoints)} endpoints...", file=sys.stderr)
+    batch = run_batch(
+        endpoints,
+        forced_protocol=args.protocol,
+        workers=args.workers,
+        pq_probe=not args.no_pq_probe,
+        openssl=args.openssl,
+    )
+    if args.format == "text":
+        payload = render_batch_text(batch)
+    else:
+        payload = json.dumps(
+            {"tool": "pqc-inventory", "version": __version__, "batch": batch.to_dict()},
+            indent=2,
+        )
+    _emit(payload, args.output)
+    return EXIT_POLICY_FAIL if _fails(batch.summary.worst_verdict, args.fail_on) else EXIT_OK
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    specs = list(args.targets)
+    try:
+        if args.input:
+            specs += read_target_file(args.input)
+    except OSError as exc:
+        parser.error(f"cannot read {args.input}: {exc}")
+    if not specs:
+        parser.error("no targets given")
+
+    single = len(specs) == 1 and "/" not in specs[0] and not args.ports and not args.input
+    try:
+        return run_single(args, specs[0]) if single else run_many(args, specs)
+    except TargetError as exc:
+        parser.error(str(exc))
+        return EXIT_SCAN_ERROR  # unreachable; parser.error exits
 
 
 if __name__ == "__main__":
