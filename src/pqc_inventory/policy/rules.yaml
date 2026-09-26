@@ -35,6 +35,8 @@ protocols:
   "TLS 1.1": { status: broken, severity: high }
 
 key_exchange:
+  # Groups offered one at a time by the OpenSSL 3.5+ probe (OpenSSL spelling).
+  pq_probe_groups: [X25519MLKEM768, SecP256r1MLKEM768, SecP384r1MLKEM1024]
   # Harvest-now-decrypt-later: recorded traffic is decryptable once a quantum computer exists,
   # so quantum-vulnerable key exchange outranks quantum-vulnerable certificates.
   quantum_ready: [x25519mlkem768, secp256r1mlkem768, secp384r1mlkem1024, mlkem768, mlkem1024]
@@ -71,5 +73,6 @@ severity:
   broken: high
   weak: medium
   quantum_vulnerable_key_exchange: medium
+  classical_fallback_key_exchange: low   # classical group alongside an accepted PQ group
   quantum_vulnerable_certificate: low
   quantum_ready: info

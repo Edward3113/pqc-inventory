@@ -144,6 +144,19 @@ def test_root_sha1_self_signature_is_ignored():
 
 def test_fail_on_exit_code(monkeypatch):
     s = scan({"TLS 1.0": ProtocolInfo(True, [])})
-    monkeypatch.setattr("pqc_inventory.cli.scan_tls", lambda host, port: s)
+    monkeypatch.setattr("pqc_inventory.cli.scan_tls", lambda host, port, **kw: s)
     assert main(["test", "-f", "text", "--fail-on", "broken"]) == 2
     assert main(["test", "-f", "text"]) == 0
+
+
+def test_pq_offered_turns_classical_groups_into_low_severity_fallback():
+    s = scan(
+        {"TLS 1.3": ProtocolInfo(True, [suite("TLS_AES_128_GCM_SHA256", "X25519", None, 253)])},
+        groups=["X25519", "X25519MLKEM768"],
+    )
+    report = grade(s)
+    f = by_subject(report)
+    assert report.pq_key_exchange is True
+    assert report.hndl_exposed is False
+    assert f["x25519"].severity == "low"
+    assert "fallback" in f["x25519"].detail

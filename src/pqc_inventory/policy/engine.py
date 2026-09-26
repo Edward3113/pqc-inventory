@@ -42,6 +42,8 @@ class Finding:
 class GradeReport:
     verdict: str
     hndl_exposed: bool
+    pq_key_exchange: bool
+    pq_probe_status: str | None
     earliest_deadline: int | None
     counts: dict[str, int]
     findings: list[Finding] = field(default_factory=list)
@@ -171,9 +173,11 @@ def grade_key_exchange(scan: TlsScanResult, rules: dict[str, Any]) -> list[Findi
     for g in scan.supported_groups:
         groups.setdefault(g.lower(), None)
 
+    normalized = {kx["aliases"].get(n, n): size for n, size in groups.items()}
+    pq_offered = any(n in kx["quantum_ready"] for n in normalized)
+
     findings = []
-    for raw_name, size in sorted(groups.items()):
-        name = kx["aliases"].get(raw_name, raw_name)
+    for name, size in sorted(normalized.items()):
         if name in kx["quantum_ready"]:
             findings.append(
                 Finding(
@@ -216,18 +220,32 @@ def grade_key_exchange(scan: TlsScanResult, rules: dict[str, Any]) -> list[Findi
                 )
                 continue
         timeline = nist_timeline(strength, rules)
-        findings.append(
-            Finding(
-                "key_exchange",
-                name,
-                QV,
-                sev["quantum_vulnerable_key_exchange"],
-                3,
-                "Classical key exchange: traffic recorded today can be decrypted later "
-                f"(harvest now, decrypt later). NIST IR 8547: {_deadline_text(timeline)}.",
-                timeline,
+        if pq_offered:
+            findings.append(
+                Finding(
+                    "key_exchange",
+                    name,
+                    QV,
+                    sev["classical_fallback_key_exchange"],
+                    3,
+                    "Classical fallback for clients without post-quantum support; "
+                    f"PQ-capable clients are protected. NIST IR 8547: {_deadline_text(timeline)}.",
+                    timeline,
+                )
             )
-        )
+        else:
+            findings.append(
+                Finding(
+                    "key_exchange",
+                    name,
+                    QV,
+                    sev["quantum_vulnerable_key_exchange"],
+                    3,
+                    "Classical key exchange: traffic recorded today can be decrypted later "
+                    f"(harvest now, decrypt later). NIST IR 8547: {_deadline_text(timeline)}.",
+                    timeline,
+                )
+            )
     return findings
 
 
@@ -312,7 +330,9 @@ def grade(scan: TlsScanResult, rules: dict[str, Any] | None = None) -> GradeRepo
     verdict = present[0] if present else "unknown"
 
     kex = [f for f in findings if f.category == "key_exchange"]
-    hndl_exposed = any(f.status in (QV, BROKEN) for f in kex)
+    pq_key_exchange = any(f.status == READY for f in kex)
+    # Exposure means no PQ option exists: every client is stuck with classical key exchange.
+    hndl_exposed = not pq_key_exchange and any(f.status in (QV, BROKEN) for f in kex)
 
     deadlines = [
         f.nist.deprecated_after or f.nist.disallowed_after
@@ -320,5 +340,11 @@ def grade(scan: TlsScanResult, rules: dict[str, Any] | None = None) -> GradeRepo
         if f.nist and (f.nist.deprecated_after or f.nist.disallowed_after)
     ]
     return GradeReport(
-        verdict, hndl_exposed, min(deadlines) if deadlines else None, counts, findings
+        verdict,
+        hndl_exposed,
+        pq_key_exchange,
+        scan.pq_probe.status if scan.pq_probe else None,
+        min(deadlines) if deadlines else None,
+        counts,
+        findings,
     )

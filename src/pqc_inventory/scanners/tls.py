@@ -24,10 +24,12 @@ from pqc_inventory.models import (
     CertificateInfo,
     CipherSuiteInfo,
     KeyExchangeInfo,
+    PqProbeResult,
     ProtocolInfo,
     PublicKeyInfo,
     TlsScanResult,
 )
+from pqc_inventory.scanners.pq_probe import probe_pq_groups
 
 # ScanCommand -> (display name, attribute on sslyze's scan result)
 PROTOCOL_COMMANDS: dict[ScanCommand, tuple[str, str]] = {
@@ -92,8 +94,19 @@ def describe_key_exchange(ephemeral_key: object | None) -> KeyExchangeInfo | Non
     )
 
 
-def scan_tls(host: str, port: int = 443) -> TlsScanResult:
-    """Scan a single TLS endpoint and return a normalized inventory."""
+def scan_tls(
+    host: str,
+    port: int = 443,
+    *,
+    pq_probe: bool = True,
+    pq_groups: list[str] | None = None,
+    openssl: str | None = None,
+) -> TlsScanResult:
+    """Scan a single TLS endpoint and return a normalized inventory.
+
+    If pq_probe is set and the server speaks TLS 1.3, each group in pq_groups is offered on
+    its own via OpenSSL 3.5+; accepted groups are appended to supported_groups.
+    """
     scanned_at = datetime.now(UTC).isoformat()
     commands = set(PROTOCOL_COMMANDS) | {ScanCommand.CERTIFICATE_INFO, ScanCommand.ELLIPTIC_CURVES}
 
@@ -111,7 +124,12 @@ def scan_tls(host: str, port: int = 443) -> TlsScanResult:
 
     if server_result.scan_status != ServerScanStatusEnum.COMPLETED:
         trace = server_result.connectivity_error_trace
-        error = str(trace.exc_value) if trace else server_result.scan_status.name
+        # sslyze stores a traceback.TracebackException; format just the final exception line.
+        error = (
+            "".join(trace.format_exception_only()).strip()
+            if trace
+            else server_result.scan_status.name
+        )
         return TlsScanResult(host, port, scanned_at, "error", error=error)
 
     attempts = server_result.scan_result
@@ -145,5 +163,17 @@ def scan_tls(host: str, port: int = 443) -> TlsScanResult:
             result.certificate_chain = [
                 describe_certificate(c) for c in deployments[0].received_certificate_chain
             ]
+
+    if pq_probe:
+        tls13 = result.protocols.get("TLS 1.3")
+        if tls13 and tls13.supported:
+            result.pq_probe = probe_pq_groups(host, port, pq_groups or [], openssl)
+            for group in result.pq_probe.accepted:
+                if group not in result.supported_groups:
+                    result.supported_groups.append(group)
+        else:
+            result.pq_probe = PqProbeResult(
+                "skipped", reason="server does not support TLS 1.3 (required for ML-KEM)"
+            )
 
     return result

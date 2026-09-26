@@ -45,6 +45,16 @@ class ProtocolInfo:
 
 
 @dataclass
+class PqProbeResult:
+    status: str  # "completed" | "skipped" | "error"
+    openssl: str | None = None  # version string of the OpenSSL binary used
+    reason: str | None = None
+    accepted: list[str] = field(default_factory=list)
+    rejected: list[str] = field(default_factory=list)
+    errors: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class TlsScanResult:
     host: str
     port: int
@@ -54,6 +64,7 @@ class TlsScanResult:
     protocols: dict[str, ProtocolInfo] = field(default_factory=dict)
     supported_groups: list[str] = field(default_factory=list)
     certificate_chain: list[CertificateInfo] = field(default_factory=list)
+    pq_probe: PqProbeResult | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

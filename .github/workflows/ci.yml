@@ -36,7 +36,7 @@ jobs:
   codeql:
     runs-on: ubuntu-latest
     permissions:
-      security-events: write
+      security-events: write   # upload results to the Security tab
       contents: read
     steps:
       - uses: actions/checkout@v4

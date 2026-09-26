@@ -5,8 +5,9 @@
 A scanner that builds a cryptographic inventory of network endpoints and grades each
 algorithm against NIST's post-quantum transition timeline (NIST IR 8547).
 
-> **Status:** Milestone 2 of 7 — single-host TLS inventory with policy grading. SSH, hybrid
-> PQ detection, CycloneDX CBOM output, and the lab/report pipeline are on the roadmap below.
+> **Status:** Milestone 3 of 7 — single-host TLS inventory, policy grading, and hybrid
+> post-quantum key exchange detection. SSH, range scanning, CycloneDX CBOM output, and the
+> lab/report pipeline are on the roadmap below.
 
 ## Why
 
@@ -24,7 +25,41 @@ uv sync
 uv run pqc-inventory example.com -f text                # human-readable graded report
 uv run pqc-inventory 192.168.1.10:8443 -o reports/host.json   # full JSON (scan + grade)
 uv run pqc-inventory example.com --fail-on broken       # exit code 2 if anything is broken
+uv run pqc-inventory example.com --no-pq-probe          # skip the post-quantum probe
 ```
+
+### Post-quantum detection requires OpenSSL 3.5+
+
+The tool's TLS library can't offer ML-KEM, so the post-quantum probe shells out to an
+OpenSSL 3.5+ binary and offers each hybrid group (X25519MLKEM768, SecP256r1MLKEM768,
+SecP384r1MLKEM1024) on its own. It looks for OpenSSL in this order: `--openssl PATH`, the
+`PQC_OPENSSL` environment variable, Homebrew's `openssl@3`, then `openssl` on your PATH.
+macOS's built-in `/usr/bin/openssl` is LibreSSL and is rejected automatically.
+
+```bash
+brew install openssl@3        # macOS
+```
+
+If no capable binary is found, the scan still runs and the report says the probe was
+skipped. It never reports "no post-quantum support" when it simply couldn't check.
+
+### Example: local server with hybrid PQ enabled
+
+```
+Verdict: QUANTUM-VULNERABLE
+Post-quantum key exchange: YES
+Harvest-now-decrypt-later exposure: no
+Post-quantum probe: X25519MLKEM768 [OpenSSL 3.5.4]
+
+[P3] QUANTUM-VULNERABLE  key_exchange    x25519
+      Classical fallback for clients without post-quantum support; PQ-capable clients are protected.
+[P4] QUANTUM-VULNERABLE  certificate     leaf: EC-256 (secp256r1)
+[P5] QUANTUM-READY       key_exchange    x25519mlkem768
+```
+
+Key exchange is protected, but the certificate is still classical. That's today's
+real-world state for PQ-enabled sites, since post-quantum certificates aren't yet
+widely deployed in the public WebPKI.
 
 ### Example: github.com (September 2026)
 
@@ -68,7 +103,7 @@ rather than in code.
 
 - [x] 1. TLS inventory for a single host
 - [x] 2. Policy engine: grade findings as broken / weak / quantum-vulnerable / quantum-ready
-- [ ] 3. Hybrid post-quantum key exchange probe (X25519MLKEM768 via OpenSSL 3.5+)
+- [x] 3. Hybrid post-quantum key exchange probe (X25519MLKEM768 via OpenSSL 3.5+)
 - [ ] 4. SSH scanning
 - [ ] 5. CIDR range scanning with concurrency
 - [ ] 6. CycloneDX 1.6 CBOM + HTML report with prioritized migration list

@@ -86,3 +86,17 @@ def test_key_exchange_accepts_raw_ints():
     info = describe_key_exchange(fake)
     assert info.type == "X25519"
     assert info.size_bits == 253
+
+
+def test_unreachable_host_reports_error_instead_of_crashing():
+    """Regression: the connectivity-error path used a nonexistent traceback attribute."""
+    import socket
+
+    from pqc_inventory.scanners.tls import scan_tls
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]  # closed once the with-block exits
+    result = scan_tls("127.0.0.1", port, pq_probe=False)
+    assert result.status == "error"
+    assert result.error
