@@ -1,6 +1,6 @@
 [project]
 name = "pqc-inventory"
-version = "0.1.0"
+version = "0.2.0"
 description = "Cryptographic inventory scanner that grades TLS/SSH endpoints against NIST's post-quantum transition timeline."
 readme = "README.md"
 requires-python = ">=3.12"

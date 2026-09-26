@@ -1,4 +1,4 @@
-"""Policy rules loader. The grading engine arrives in milestone 2."""
+"""Policy rules loader. The grading engine lives in engine.py."""
 
 from __future__ import annotations
 

@@ -69,8 +69,9 @@ def test_parse_target(target, expected):
 
 def test_rules_load():
     rules = load_rules()
-    assert rules["nist_ir_8547"]["disallowed_after"] == 2035
-    assert "X25519MLKEM768" in rules["key_exchange"]["quantum_ready"]
+    assert rules["nist_ir_8547"]["timeline"][0]["deprecated_after"] == 2030
+    assert "x25519mlkem768" in rules["key_exchange"]["quantum_ready"]
+    assert None not in rules["cipher_suites"]["broken_if_name_contains"]
 
 
 def test_key_exchange_accepts_raw_ints():
