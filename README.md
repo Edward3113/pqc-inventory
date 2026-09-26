@@ -226,6 +226,28 @@ cryptographic inventory tool, evaluate these as well:
   from source code rather than from network traffic.
 - Commercial platforms such as IBM Quantum Safe, SandboxAQ AQtive Guard, and O3 Security
   cover discovery and migration planning at enterprise scale.
+## Acknowledgments
+
+pqc-inventory is a thin layer over a lot of other people's work.
+
+- **[SSLyze](https://github.com/nabla-c0d3/sslyze)** and **nassl** by Alban Diquet, which
+  perform every TLS handshake in this tool.
+- **[OpenSSL](https://www.openssl.org)**, whose 3.5 release brought ML-KEM hybrid key
+  exchange that the post-quantum probe relies on, and **[OpenSSH](https://www.openssh.com)**,
+  which made hybrid post-quantum key exchange the default for SSH.
+- **[pyca/cryptography](https://cryptography.io)** for certificate and key parsing.
+- **[CycloneDX](https://cyclonedx.org)** (OWASP) for the CBOM specification, and
+  **cyclonedx-python-lib**, whose bundled schemas validate this tool's output in CI.
+- **Jinja2**, **PyYAML**, **pytest**, and Astral's **uv** and **ruff**.
+- **NIST** for IR 8547 (Moody, Perlner, Regenscheid, Robinson, and Cooper), SP 800-57,
+  and FIPS 203, which define the deadlines and security strengths used for grading.
+- **Fabian Bäumer, Marcus Brinkmann, and Jörg Schwenk** (Ruhr University Bochum) for the
+  [Terrapin attack](https://terrapin-attack.com) research (CVE-2023-48795) behind the SSH
+  Terrapin check.
+- The projects listed under [Related work](#related-work), whose approaches informed
+  this one.
+
+Developed with assistance from Claude (Anthropic).
 
 ### This project's focus
 
@@ -259,4 +281,5 @@ Only scan systems you own or have written permission to test.
 
 ## License
 
-MIT
+AGPL-3.0-only. pqc-inventory is built on SSLyze and nassl, which are licensed under
+the AGPL-3.0; see [LICENSE](LICENSE).
