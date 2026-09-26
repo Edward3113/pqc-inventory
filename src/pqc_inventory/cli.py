@@ -8,8 +8,10 @@ import sys
 import warnings
 
 from pqc_inventory import __version__
-from pqc_inventory.batch import BatchResult, run_batch
+from pqc_inventory.batch import BatchResult, EndpointResult, run_batch, summarize
 from pqc_inventory.models import SshScanResult, TlsScanResult
+from pqc_inventory.output.cbom import build_cbom
+from pqc_inventory.output.html import render_html
 from pqc_inventory.policy import load_rules
 from pqc_inventory.policy.engine import STATUS_ORDER, GradeReport, grade
 from pqc_inventory.policy.ssh import grade_ssh
@@ -146,8 +148,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-o", "--output", help="write output to this file instead of stdout")
     parser.add_argument(
-        "-f", "--format", choices=["json", "text"], default="json", help="output format"
+        "-f",
+        "--format",
+        choices=["json", "text", "cbom", "html"],
+        default="json",
+        help="output format: raw JSON, terminal text, CycloneDX 1.6 CBOM, or HTML report",
     )
+    parser.add_argument("--cbom", metavar="FILE", help="also write a CycloneDX 1.6 CBOM here")
+    parser.add_argument("--html", metavar="FILE", help="also write an HTML report here")
     parser.add_argument(
         "--fail-on",
         choices=["broken", "weak", "quantum_vulnerable"],
@@ -175,6 +183,21 @@ def _emit(payload: str, output: str | None) -> None:
         sys.stderr.close()
 
 
+def _render_artifact(kind: str, results: list[EndpointResult]) -> str:
+    if kind == "cbom":
+        return json.dumps(build_cbom(results), indent=2)
+    return render_html(results, summarize(len(results), len(results), results))
+
+
+def _write_extras(args: argparse.Namespace, results: list[EndpointResult]) -> None:
+    """--cbom / --html: write additional artifacts from the same scan."""
+    for kind, path in (("cbom", args.cbom), ("html", args.html)):
+        if path:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(_render_artifact(kind, results) + "\n")
+            print(f"Wrote {path}", file=sys.stderr)
+
+
 def _fails(verdict: str, threshold: str | None) -> bool:
     return bool(
         threshold
@@ -200,8 +223,11 @@ def run_single(args: argparse.Namespace, spec: str) -> int:
         )
         report = grade(scan) if scan.status == "completed" else None
 
+    results = [EndpointResult(host, port, protocol, scan, report)]
     if args.format == "text":
         payload = render_text(scan, report) if report else f"Scan failed: {scan.error}"
+    elif args.format in ("cbom", "html"):
+        payload = _render_artifact(args.format, results)
     else:
         payload = json.dumps(
             {
@@ -214,6 +240,7 @@ def run_single(args: argparse.Namespace, spec: str) -> int:
             indent=2,
         )
     _emit(payload, args.output)
+    _write_extras(args, results)
 
     if report is None:
         return EXIT_SCAN_ERROR
@@ -233,12 +260,15 @@ def run_many(args: argparse.Namespace, specs: list[str]) -> int:
     )
     if args.format == "text":
         payload = render_batch_text(batch)
+    elif args.format in ("cbom", "html"):
+        payload = _render_artifact(args.format, batch.results)
     else:
         payload = json.dumps(
             {"tool": "pqc-inventory", "version": __version__, "batch": batch.to_dict()},
             indent=2,
         )
     _emit(payload, args.output)
+    _write_extras(args, batch.results)
     return EXIT_POLICY_FAIL if _fails(batch.summary.worst_verdict, args.fail_on) else EXIT_OK
 
 

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<meta name="generator" content="pqc-inventory {{ version }}">
+<title>Post-quantum readiness report</title>
+<style>
+  :root {
+    --ink: #1b2430;
+    --muted: #5a6573;
+    --paper: #ffffff;
+    --surface: #f2f4f7;
+    --rule: #d0d5dd;
+    --broken: #b42318;
+    --weak: #b54708;
+    --qv: #5b3fb8;
+    --ready: #067647;
+    --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e6e9ee; --muted: #a3acb9; --paper: #151a21; --surface: #1e252e; --rule: #333d4a;
+      --broken: #f97066; --weak: #fdb022; --qv: #a48afb; --ready: #47cd89;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 16px/1.55 var(--sans);
+  }
+  main { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.2; }
+  h1 { font-size: 2.4rem; margin: 0 0 .4rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.55rem; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 1.15rem; margin: 2rem 0 .3rem; }
+  p { max-width: 70ch; }
+  .scope { color: var(--muted); margin: 0; }
+  .lede { font-size: 1.15rem; margin: 1.5rem 0 0; }
+  .lede strong { font-weight: 650; }
+
+  /* Timeline: the one memorable element */
+  .timeline { margin: 2.5rem 0 0; padding: 1.5rem 0 0; }
+  .track { position: relative; display: grid; grid-template-columns: 1fr 1fr 1fr; }
+  .track::before {
+    content: ""; position: absolute; left: 0; right: 0; top: .55rem; height: 4px;
+    background: linear-gradient(90deg, var(--weak) 0%, var(--qv) 55%, var(--broken) 100%);
+    border-radius: 2px; opacity: .85;
+  }
+  .stop { position: relative; padding-top: 1.8rem; }
+  .stop::before {
+    content: ""; position: absolute; top: 0; left: 0; width: 1.35rem; height: 1.35rem;
+    border-radius: 50%; background: var(--paper); border: 4px solid currentColor;
+  }
+  .stop.now { color: var(--weak); }
+  .stop.y2030 { color: var(--qv); }
+  .stop.y2035 { color: var(--broken); }
+  .stop .year { font-family: var(--serif); font-size: 2rem; font-weight: 600; color: var(--ink); line-height: 1; }
+  .stop .what { color: var(--muted); font-size: .95rem; margin-top: .3rem; }
+  .stop .count { color: var(--ink); font-weight: 600; margin-top: .5rem; }
+
+  /* Status badges */
+  .status { display: inline-block; padding: .05rem .5rem; border-radius: 999px; font-size: .82rem; font-weight: 600;
+            border: 1px solid currentColor; white-space: nowrap; }
+  .status.broken { color: var(--broken); }
+  .status.weak { color: var(--weak); }
+  .status.quantum_vulnerable { color: var(--qv); }
+  .status.quantum_ready { color: var(--ready); }
+  .status.unknown, .status.error { color: var(--muted); }
+
+  /* Plan */
+  .plan-step { display: grid; grid-template-columns: 3.2rem 1fr; gap: 0 1rem; margin-top: 2rem; }
+  .plan-step .n { font-family: var(--serif); font-size: 2.2rem; font-weight: 600; color: var(--muted); line-height: 1; }
+  .plan-step > div { min-width: 0; } /* let the table scroll instead of widening the page */
+  .plan-step h3 { margin-top: .2rem; }
+  .plan-step > div > p { color: var(--muted); margin: 0 0 .8rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .93rem; }
+  th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); background: var(--surface); }
+  td.subject { font-weight: 600; overflow-wrap: anywhere; }
+  td.endpoints { color: var(--muted); overflow-wrap: anywhere; }
+  .table-wrap { overflow-x: auto; }
+  .table-wrap table { min-width: 38rem; }
+  td.endpoints span { white-space: nowrap; }
+
+  details { border-bottom: 1px solid var(--rule); }
+  summary { cursor: pointer; padding: .7rem .2rem; display: grid;
+            grid-template-columns: minmax(10rem, 1.4fr) 4rem 10rem 6rem 6rem; gap: .8rem; align-items: center; }
+  summary:focus-visible { outline: 3px solid var(--qv); outline-offset: 2px; }
+  summary .ep { font-weight: 600; overflow-wrap: anywhere; }
+  details[open] summary { background: var(--surface); }
+  .detail-body { padding: .5rem .2rem 1.2rem; }
+  .banner { color: var(--muted); font-size: .9rem; margin: .3rem 0 .8rem; overflow-wrap: anywhere; }
+  .muted { color: var(--muted); }
+  .yes { color: var(--ready); font-weight: 600; }
+  .no-pq { color: var(--muted); }
+  .exposed { color: var(--broken); font-weight: 600; }
+  .head-row { display: grid; grid-template-columns: minmax(10rem, 1.4fr) 4rem 10rem 6rem 6rem; gap: .8rem;
+              padding: .5rem .2rem; color: var(--muted); font-weight: 600; font-size: .9rem;
+              border-bottom: 1px solid var(--rule); background: var(--surface); }
+
+  footer { margin-top: 3.5rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+  footer p { margin: .4rem 0; }
+
+  @media (max-width: 720px) {
+    main { padding: 2rem 1rem 3rem; }
+    h1 { font-size: 1.9rem; }
+    .track { grid-template-columns: 1fr; gap: 1.5rem; }
+    .track::before { display: none; }
+    summary, .head-row { grid-template-columns: 1fr auto; }
+    summary .opt, .head-row .opt { display: none; }
+    .plan-step { grid-template-columns: 2.2rem 1fr; }
+  }
+  @media print {
+    details { break-inside: avoid; }
+    details > .detail-body { display: block; }
+    .track::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Post-quantum readiness report</h1>
+    <p class="scope">
+      {{ summary.scanned }} endpoint{{ "s" if summary.scanned != 1 }} assessed{% if summary.errors %}, {{ summary.errors }} could not be scanned{% endif %}.
+      Generated {{ generated_at }} by pqc-inventory {{ version }}.
+    </p>
+    {% if summary.scanned %}
+    <p class="lede">
+      Worst finding: <span class="status {{ summary.worst_verdict }}">{{ status_labels.get(summary.worst_verdict, summary.worst_verdict) }}</span>.
+      <strong>{{ summary.pq_key_exchange }} of {{ summary.scanned }}</strong> endpoints offer post-quantum key exchange;
+      <strong>{{ summary.hndl_exposed }}</strong> {{ "is" if summary.hndl_exposed == 1 else "are" }} exposed to harvest-now-decrypt-later, meaning traffic recorded today could be decrypted by a future quantum computer.
+    </p>
+    {% else %}
+    <p class="lede">No endpoints were graded. Check that the targets are reachable and that the ports are open.</p>
+    {% endif %}
+  </header>
+
+  {% if summary.scanned %}
+  <section class="timeline" aria-label="NIST IR 8547 timeline">
+    <div class="track">
+      <div class="stop now">
+        <div class="year">Today</div>
+        <div class="what">Fix broken and weak configurations</div>
+        <div class="count">{{ summary.verdicts.broken + summary.verdicts.weak }} endpoint{{ "s" if (summary.verdicts.broken + summary.verdicts.weak) != 1 }} affected</div>
+      </div>
+      <div class="stop y2030">
+        <div class="year">2030</div>
+        <div class="what">112-bit algorithms deprecated (RSA-2048, DH-2048)</div>
+        <div class="count">{{ timeline.deprecated_2030 }} finding{{ "s" if timeline.deprecated_2030 != 1 }}</div>
+      </div>
+      <div class="stop y2035">
+        <div class="year">2035</div>
+        <div class="what">All quantum-vulnerable public-key algorithms disallowed</div>
+        <div class="count">{{ timeline.disallowed_2035 }} finding{{ "s" if timeline.disallowed_2035 != 1 }}</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Migration plan</h2>
+    <p>Work top to bottom. Identical findings across endpoints are grouped so each change can be rolled out once.</p>
+    {% for group in plan %}
+    <div class="plan-step">
+      <div class="n">{{ group.priority }}</div>
+      <div>
+        <h3>{{ group.title }}</h3>
+        <p>{{ group.description }}</p>
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th>Finding</th><th>Status</th><th>Endpoints</th><th>NIST IR 8547</th></tr></thead>
+          <tbody>
+          {% for item in group.items %}
+            <tr>
+              <td class="subject">{{ item.subject }}<div class="muted" style="font-weight:400">{{ item.detail }}</div></td>
+              <td><span class="status {{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td>
+              <td class="endpoints">{% if item.endpoints | length > 1 %}{{ item.endpoints | length }} endpoints: {% endif %}{% for ep in item.endpoints %}<span>{{ ep }}</span>{{ ", " if not loop.last }}{% endfor %}</td>
+              <td>{{ item.deadline or "" }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Endpoints</h2>
+    <div class="head-row" aria-hidden="true">
+      <span>Endpoint</span><span>Protocol</span><span>Verdict</span><span class="opt">PQ key exchange</span><span class="opt">HNDL exposure</span>
+    </div>
+    {% for r in results %}
+    <details>
+      <summary>
+        <span class="ep">{{ r.host }}:{{ r.port }}</span>
+        <span class="opt">{{ r.protocol | upper }}</span>
+        {% if r.grade %}
+        <span><span class="status {{ r.grade.verdict }}">{{ status_labels.get(r.grade.verdict, r.grade.verdict) }}</span></span>
+        <span class="opt">{% if r.grade.pq_key_exchange %}<span class="yes">Yes</span>{% else %}<span class="no-pq">No</span>{% endif %}</span>
+        <span class="opt">{% if r.grade.hndl_exposed %}<span class="exposed">Exposed</span>{% else %}<span class="muted">No</span>{% endif %}</span>
+        {% else %}
+        <span><span class="status error">Scan failed</span></span><span class="opt"></span><span class="opt"></span>
+        {% endif %}
+      </summary>
+      <div class="detail-body">
+        {% if r.grade %}
+          {% if is_ssh(r.scan) %}<p class="banner">Server identifies as {{ r.scan.banner }}</p>{% endif %}
+          <div class="table-wrap">
+          <table>
+            <thead><tr><th>Priority</th><th>Category</th><th>Finding</th><th>Status</th></tr></thead>
+            <tbody>
+            {% for f in r.grade.findings %}
+              <tr>
+                <td>P{{ f.priority }}</td>
+                <td>{{ f.category | replace("_", " ") }}</td>
+                <td class="subject">{{ f.subject }}<div class="muted" style="font-weight:400">{{ f.detail }}</div></td>
+                <td><span class="status {{ f.status }}">{{ status_labels.get(f.status, f.status) }}</span></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        {% else %}
+          <p>The scan could not complete: {{ r.scan.error }}</p>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+  </section>
+
+  <footer>
+    <p>Deadlines follow NIST IR 8547 (initial public draft, November 2024), which may change before it is finalized. Security strength follows NIST SP 800-57 Part 1.</p>
+    <p>This report reflects the cryptography each endpoint negotiates over the network. It does not cover keys at rest, internal service-to-service traffic, or application-level cryptography.</p>
+    <p>Scan only systems you own or are authorized to test.</p>
+  </footer>
+</main>
+</body>
+</html>

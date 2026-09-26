@@ -5,9 +5,9 @@
 A scanner that builds a cryptographic inventory of network endpoints and grades each
 algorithm against NIST's post-quantum transition timeline (NIST IR 8547).
 
-> **Status:** Milestone 5 of 7 — TLS and SSH inventory across whole networks, with policy
-> grading and hybrid post-quantum detection. CycloneDX CBOM output and the lab/report
-> pipeline are on the roadmap below.
+> **Status:** Milestone 6 of 7 — TLS and SSH inventory across whole networks, policy
+> grading, hybrid post-quantum detection, CycloneDX 1.6 CBOM output, and an HTML report.
+> The demo lab and published sample report are next.
 
 ## Why
 
@@ -28,6 +28,29 @@ uv run pqc-inventory example.com --fail-on broken       # exit code 2 if anythin
 uv run pqc-inventory example.com --no-pq-probe          # skip the post-quantum probe
 uv run pqc-inventory -p ssh 192.168.1.20 -f text        # SSH (default port 22)
 ```
+
+### Reports: CBOM and HTML
+
+```bash
+uv run pqc-inventory 10.0.0.0/24 -f text --cbom reports/network.cbom.json --html reports/network.html
+```
+
+One scan produces all three outputs.
+
+**CycloneDX 1.6 CBOM.** A cryptographic bill of materials in the OWASP CycloneDX
+standard, so other security tools can import the inventory. Each endpoint is a service,
+each protocol, algorithm, and certificate is a `cryptographic-asset` component with
+`nistQuantumSecurityLevel` and `classicalSecurityLevel` set, and the grading results
+travel as `pqc-inventory:` properties. Output is validated in CI against the official
+CycloneDX 1.6 JSON schema.
+
+**HTML report.** A single self-contained file for people who don't read JSON: a plain
+English summary, a timeline showing how many findings land on the 2030 and 2035 NIST
+deadlines, a migration plan that groups identical findings across endpoints so each fix
+is made once, and expandable per-endpoint details. Because SSH banners and certificate
+subjects come from servers that may be hostile, all content is HTML-escaped and the page
+carries a Content-Security-Policy that forbids scripts entirely. It works in dark mode,
+on phones, and in print.
 
 ### Scanning a network
 
@@ -165,7 +188,7 @@ rather than in code.
 - [x] 3. Hybrid post-quantum key exchange probe (X25519MLKEM768 via OpenSSL 3.5+)
 - [x] 4. SSH scanning (key exchange, host keys, ciphers, MACs, Terrapin)
 - [x] 5. CIDR range scanning with discovery, protocol auto-detection, and concurrency
-- [ ] 6. CycloneDX 1.6 CBOM + HTML report with prioritized migration list
+- [x] 6. CycloneDX 1.6 CBOM + HTML report with prioritized migration list
 - [ ] 7. Docker lab targets, CI scan, GitHub Pages demo report
 
 ## Authorized use
