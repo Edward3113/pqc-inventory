@@ -106,7 +106,12 @@ def timeline_counts(results: list[EndpointResult]) -> dict[str, int]:
     return {"deprecated_2030": deprecated, "disallowed_2035": disallowed}
 
 
-def render_html(results: list[EndpointResult], summary: BatchSummary) -> str:
+DEFAULT_TITLE = "Post-quantum readiness report"
+
+
+def render_html(
+    results: list[EndpointResult], summary: BatchSummary, title: str | None = None
+) -> str:
     env = Environment(
         loader=PackageLoader("pqc_inventory.output", "templates"),
         autoescape=select_autoescape(default=True, default_for_string=True),
@@ -116,6 +121,7 @@ def render_html(results: list[EndpointResult], summary: BatchSummary) -> str:
     template = env.get_template("report.html.j2")
     return template.render(
         version=__version__,
+        title=title or DEFAULT_TITLE,
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         summary=summary,
         results=results,

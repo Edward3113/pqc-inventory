@@ -1,0 +1,82 @@
+# pqc-inventory demo lab: five servers spanning broken to quantum-ready, plus the scanner.
+#
+#   docker compose -f lab/compose.yaml up -d --build --wait
+#   docker compose -f lab/compose.yaml run --rm scanner
+#   open lab/output/index.html
+#   docker compose -f lab/compose.yaml down
+#
+# Targets are also published on localhost (8441-8443, 2221-2222) so you can scan them
+# with a local install: uv run pqc-inventory 127.0.0.1 --ports 8441,8442,8443,2221,2222
+
+x-target: &target
+  build:
+    context: .
+    dockerfile: target.Dockerfile
+  image: pqc-inventory-lab-target
+  restart: unless-stopped
+
+x-tls-health: &tls-health
+  test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/443"]
+  interval: 2s
+  retries: 15
+
+x-ssh-health: &ssh-health
+  test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/22"]
+  interval: 2s
+  retries: 15
+
+services:
+  tls-legacy:
+    <<: *target
+    environment: { LAB_ROLE: tls-legacy }
+    ports: ["127.0.0.1:8441:443"]
+    healthcheck: *tls-health
+
+  tls-classical:
+    <<: *target
+    environment: { LAB_ROLE: tls-classical }
+    ports: ["127.0.0.1:8442:443"]
+    healthcheck: *tls-health
+
+  tls-pq:
+    <<: *target
+    environment: { LAB_ROLE: tls-pq }
+    ports: ["127.0.0.1:8443:443"]
+    healthcheck: *tls-health
+
+  ssh-legacy:
+    <<: *target
+    environment: { LAB_ROLE: ssh-legacy }
+    ports: ["127.0.0.1:2221:22"]
+    healthcheck: *ssh-health
+
+  ssh-modern:
+    <<: *target
+    environment: { LAB_ROLE: ssh-modern }
+    ports: ["127.0.0.1:2222:22"]
+    healthcheck: *ssh-health
+
+  scanner:
+    build:
+      context: ..
+      dockerfile: lab/scanner.Dockerfile
+    image: pqc-inventory-scanner
+    profiles: ["scan"]  # not started by `up`; run on demand
+    volumes:
+      - ./output:/output
+    depends_on:
+      tls-legacy: { condition: service_healthy }
+      tls-classical: { condition: service_healthy }
+      tls-pq: { condition: service_healthy }
+      ssh-legacy: { condition: service_healthy }
+      ssh-modern: { condition: service_healthy }
+    command:
+      - tls-legacy:443
+      - tls-classical:443
+      - tls-pq:443
+      - ssh-legacy:22
+      - ssh-modern:22
+      - --format=text
+      - --cbom=/output/cbom.json
+      - --html=/output/index.html
+      - --title=Demo lab: post-quantum readiness report

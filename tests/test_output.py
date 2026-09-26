@@ -184,3 +184,8 @@ def test_cli_writes_cbom_and_html_from_one_scan(tmp_path, monkeypatch, capsys):
     assert rc == 0
     assert JsonStrictValidator(SchemaVersion.V1_6).validate_str(cbom.read_text()) is None
     assert "Post-quantum readiness report" in html.read_text()
+
+
+def test_custom_title_is_escaped(results):
+    html = render_html(results, summarize(3, 3, results), title="Lab <b>demo</b>")
+    assert "<title>Lab &lt;b&gt;demo&lt;/b&gt;</title>" in html

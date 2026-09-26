@@ -5,9 +5,9 @@
 A scanner that builds a cryptographic inventory of network endpoints and grades each
 algorithm against NIST's post-quantum transition timeline (NIST IR 8547).
 
-> **Status:** Milestone 6 of 7 — TLS and SSH inventory across whole networks, policy
-> grading, hybrid post-quantum detection, CycloneDX 1.6 CBOM output, and an HTML report.
-> The demo lab and published sample report are next.
+**[View the live demo report](https://edward3113.github.io/pqc-inventory/)** and its
+[CycloneDX CBOM](https://edward3113.github.io/pqc-inventory/cbom.json). CI rebuilds both on
+every push by scanning a lab of five deliberately configured servers.
 
 ## Why
 
@@ -17,6 +17,30 @@ these algorithms after 2030 and disallowing them after 2035. Traffic recorded to
 be decrypted later ("harvest now, decrypt later"), so organizations need to know where
 quantum-vulnerable key exchange lives on their networks now. You can't migrate what you
 haven't inventoried.
+
+## Try the demo lab
+
+Requires Docker (Docker Desktop or OrbStack). Nothing else needs to be installed; the
+scanner runs in a container with OpenSSL 3.5.
+
+```bash
+docker compose -f lab/compose.yaml up -d --build --wait
+docker compose -f lab/compose.yaml run --rm scanner
+open lab/output/index.html
+docker compose -f lab/compose.yaml down
+```
+
+| Target | Configuration | Expected verdict |
+|---|---|---|
+| `tls-legacy` | TLS 1.0–1.2, RSA-1024 certificate signed with SHA-1, static RSA | Broken |
+| `tls-classical` | TLS 1.2/1.3, AEAD only, ECDSA P-256, classical key exchange | Quantum-vulnerable, HNDL exposed |
+| `tls-pq` | Same, plus hybrid X25519MLKEM768 | Quantum-vulnerable, PQ key exchange |
+| `ssh-legacy` | SHA-1 key exchange, `ssh-rsa` signatures, CBC | Broken |
+| `ssh-modern` | Stock OpenSSH 10 (ML-KEM hybrid by default) | Weak (default MACs), PQ key exchange |
+
+The targets are also published on localhost (ports 8441–8443, 2221–2222), so a local
+install can scan them too. These servers are deliberately misconfigured; never reuse
+their settings.
 
 ## Quick start
 
@@ -189,7 +213,7 @@ rather than in code.
 - [x] 4. SSH scanning (key exchange, host keys, ciphers, MACs, Terrapin)
 - [x] 5. CIDR range scanning with discovery, protocol auto-detection, and concurrency
 - [x] 6. CycloneDX 1.6 CBOM + HTML report with prioritized migration list
-- [ ] 7. Docker lab targets, CI scan, GitHub Pages demo report
+- [x] 7. Docker demo lab, full test suite in CI on OpenSSL 3.5, GitHub Pages demo report
 
 ## Authorized use
 

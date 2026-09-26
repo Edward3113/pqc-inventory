@@ -156,6 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--cbom", metavar="FILE", help="also write a CycloneDX 1.6 CBOM here")
     parser.add_argument("--html", metavar="FILE", help="also write an HTML report here")
+    parser.add_argument("--title", help="title for the HTML report")
     parser.add_argument(
         "--fail-on",
         choices=["broken", "weak", "quantum_vulnerable"],
@@ -183,10 +184,10 @@ def _emit(payload: str, output: str | None) -> None:
         sys.stderr.close()
 
 
-def _render_artifact(kind: str, results: list[EndpointResult]) -> str:
+def _render_artifact(kind: str, results: list[EndpointResult], title: str | None = None) -> str:
     if kind == "cbom":
         return json.dumps(build_cbom(results), indent=2)
-    return render_html(results, summarize(len(results), len(results), results))
+    return render_html(results, summarize(len(results), len(results), results), title)
 
 
 def _write_extras(args: argparse.Namespace, results: list[EndpointResult]) -> None:
@@ -194,7 +195,7 @@ def _write_extras(args: argparse.Namespace, results: list[EndpointResult]) -> No
     for kind, path in (("cbom", args.cbom), ("html", args.html)):
         if path:
             with open(path, "w", encoding="utf-8") as fh:
-                fh.write(_render_artifact(kind, results) + "\n")
+                fh.write(_render_artifact(kind, results, args.title) + "\n")
             print(f"Wrote {path}", file=sys.stderr)
 
 
@@ -227,7 +228,7 @@ def run_single(args: argparse.Namespace, spec: str) -> int:
     if args.format == "text":
         payload = render_text(scan, report) if report else f"Scan failed: {scan.error}"
     elif args.format in ("cbom", "html"):
-        payload = _render_artifact(args.format, results)
+        payload = _render_artifact(args.format, results, args.title)
     else:
         payload = json.dumps(
             {
@@ -261,7 +262,7 @@ def run_many(args: argparse.Namespace, specs: list[str]) -> int:
     if args.format == "text":
         payload = render_batch_text(batch)
     elif args.format in ("cbom", "html"):
-        payload = _render_artifact(args.format, batch.results)
+        payload = _render_artifact(args.format, batch.results, args.title)
     else:
         payload = json.dumps(
             {"tool": "pqc-inventory", "version": __version__, "batch": batch.to_dict()},
