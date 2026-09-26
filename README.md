@@ -205,6 +205,44 @@ stronger algorithms such as P-256, X25519, and RSA-3072 are disallowed after 203
 is still a draft, so the dates live in [`rules.yaml`](src/pqc_inventory/policy/rules.yaml)
 rather than in code.
 
+## Related work
+
+This project is a learning and portfolio project in an active field. If you need a
+cryptographic inventory tool, evaluate these as well:
+
+- **[sslyze](https://github.com/nabla-c0d3/sslyze)**, **[testssl.sh](https://testssl.sh)**,
+  and **[ssh-audit](https://github.com/jtesta/ssh-audit)**: the established TLS and SSH
+  configuration scanners. pqc-inventory uses sslyze for its TLS handshakes.
+- **[AC Scanner](https://github.com/qubitac/AC-Scanner)**: a TLS and SSH post-quantum
+  scanner with subdomain discovery, hybrid key exchange detection, CBOM output mapped to
+  NIST IR 8547, and a hosted dashboard.
+- **[Open Quantum Secure](https://github.com/jimbo111/open-quantum-secure)**: scans source
+  code across many languages as well as live TLS and SSH endpoints, with CycloneDX 1.7
+  output, a readiness score, and checks against multiple compliance frameworks.
+- **[CBOM-Lens](https://github.com/OmniTrustILM/cbom-lens)**: builds CBOMs from
+  filesystems, container images, and network ports, with detailed modeling of
+  post-quantum algorithms.
+- **[CBOMkit](https://github.com/IBM/cbomkit)** (IBM) and similar tools generate CBOMs
+  from source code rather than from network traffic.
+- Commercial platforms such as IBM Quantum Safe, SandboxAQ AQtive Guard, and O3 Security
+  cover discovery and migration planning at enterprise scale.
+
+### This project's focus
+
+- **Deadlines tied to security strength.** Each algorithm's classical strength is
+  computed per NIST SP 800-57, so RSA-2048 and DH-2048 land on the 2030 deprecation date
+  while P-256, X25519, and RSA-3072 land on the 2035 disallowance date.
+- **Harvest-now-decrypt-later prioritization.** Key exchange ranks above signatures, and
+  a classical group offered alongside ML-KEM is graded as a low-severity fallback rather
+  than as exposure.
+- **Treating scanned servers as untrusted input.** The SSH parser is tested against
+  hostile servers, OpenSSL is invoked without a shell and with validated hostnames, and
+  the HTML report escapes all server-supplied text under a script-blocking
+  Content-Security-Policy.
+- **Verifiable output.** The CBOM is validated against the official CycloneDX 1.6 schema
+  in CI, and a Docker lab of five servers reproduces every verdict the tool can produce.
+
+
 ## Roadmap
 
 - [x] 1. TLS inventory for a single host
