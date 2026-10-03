@@ -26,8 +26,8 @@ haven't inventoried.
 pqc-inventory is the first project in a series. A later one,
 [btc_trace](https://github.com/Edward3113/btc_trace), traces Bitcoin from
 OFAC-sanctioned addresses using a self-hosted node. Its planned Phase 2 asks the
-question this tool asks of networks, where quantum-vulnerable cryptography is exposed,
-of the Bitcoin blockchain: how much BTC sits in outputs whose public keys are already
+question this tool asks of networks, where quantum-vulnerable cryptography is exposed
+on the Bitcoin blockchain, and how much BTC sits in outputs whose public keys are already
 visible on-chain. The two tools share no code, and each works on its own.
 
 ## Authorized use
