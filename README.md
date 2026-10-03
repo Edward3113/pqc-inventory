@@ -2,8 +2,11 @@
 
 ![CI](https://github.com/Edward3113/pqc-inventory/actions/workflows/ci.yml/badge.svg)
 
-A scanner that builds a cryptographic inventory of network endpoints and grades each
-algorithm against NIST's post-quantum transition timeline (NIST IR 8547).
+**pqc-inventory** scans TLS and SSH endpoints, records every algorithm they offer, and
+grades each one against NIST's post-quantum transition timeline (NIST IR 8547). It
+detects hybrid post-quantum key exchange such as X25519MLKEM768, flags endpoints exposed
+to "harvest now, decrypt later", and turns the results into a prioritized migration plan,
+a CycloneDX 1.6 cryptographic bill of materials (CBOM), and a self-contained HTML report.
 
 **[View the live demo report](https://edward3113.github.io/pqc-inventory/)** and its
 [CycloneDX CBOM](https://edward3113.github.io/pqc-inventory/cbom.json). CI rebuilds both on
@@ -17,6 +20,19 @@ these algorithms after 2030 and disallowing them after 2035. Traffic recorded to
 be decrypted later ("harvest now, decrypt later"), so organizations need to know where
 quantum-vulnerable key exchange lives on their networks now. You can't migrate what you
 haven't inventoried.
+
+## Companion project
+
+pqc-inventory is the first project in a series. A later one,
+[btc_trace](https://github.com/Edward3113/btc_trace), traces Bitcoin from
+OFAC-sanctioned addresses using a self-hosted node. Its planned Phase 2 asks the
+question this tool asks of networks, where quantum-vulnerable cryptography is exposed,
+of the Bitcoin blockchain: how much BTC sits in outputs whose public keys are already
+visible on-chain. The two tools share no code, and each works on its own.
+
+## Authorized use
+
+Only scan systems you own or have written permission to test.
 
 ## Try the demo lab
 
@@ -53,28 +69,20 @@ uv run pqc-inventory example.com --no-pq-probe          # skip the post-quantum 
 uv run pqc-inventory -p ssh 192.168.1.20 -f text        # SSH (default port 22)
 ```
 
-### Reports: CBOM and HTML
+### Post-quantum detection requires OpenSSL 3.5+
+
+The tool's TLS library can't offer ML-KEM, so the post-quantum probe shells out to an
+OpenSSL 3.5+ binary and offers each hybrid group (X25519MLKEM768, SecP256r1MLKEM768,
+SecP384r1MLKEM1024) on its own. It looks for OpenSSL in this order: `--openssl PATH`, the
+`PQC_OPENSSL` environment variable, Homebrew's `openssl@3`, then `openssl` on your PATH.
+macOS's built-in `/usr/bin/openssl` is LibreSSL and is rejected automatically.
 
 ```bash
-uv run pqc-inventory 10.0.0.0/24 -f text --cbom reports/network.cbom.json --html reports/network.html
+brew install openssl@3        # macOS
 ```
 
-One scan produces all three outputs.
-
-**CycloneDX 1.6 CBOM.** A cryptographic bill of materials in the OWASP CycloneDX
-standard, so other security tools can import the inventory. Each endpoint is a service,
-each protocol, algorithm, and certificate is a `cryptographic-asset` component with
-`nistQuantumSecurityLevel` and `classicalSecurityLevel` set, and the grading results
-travel as `pqc-inventory:` properties. Output is validated in CI against the official
-CycloneDX 1.6 JSON schema.
-
-**HTML report.** A single self-contained file for people who don't read JSON: a plain
-English summary, a timeline showing how many findings land on the 2030 and 2035 NIST
-deadlines, a migration plan that groups identical findings across endpoints so each fix
-is made once, and expandable per-endpoint details. Because SSH banners and certificate
-subjects come from servers that may be hostile, all content is HTML-escaped and the page
-carries a Content-Security-Policy that forbids scripts entirely. It works in dark mode,
-on phones, and in print.
+If no capable binary is found, the scan still runs and the report says the probe was
+skipped. It never reports "no post-quantum support" when it simply couldn't check.
 
 ### Scanning a network
 
@@ -99,6 +107,7 @@ ENDPOINT                 PROTO VERDICT             PQ KEX  HNDL  DETAIL
 127.0.0.1:2222           ssh   WEAK                yes     no    SSH-2.0-OpenSSH_9.6p1
 127.0.0.1:14433          tls   QUANTUM-VULNERABLE  yes     no
 127.0.0.1:14434          tls   WEAK                no      YES
+...
 ```
 
 Safety rails: ranges outside private address space are refused unless you pass
@@ -116,7 +125,32 @@ It grades key exchange (including OpenSSH's hybrid post-quantum `sntrup761x25519
 Terrapin attack (CVE-2023-48795): servers that offer ChaCha20-Poly1305 or CBC with
 encrypt-then-MAC without strict key exchange are flagged.
 
-Example against a stock OpenSSH 9.6 server:
+### Reports: CBOM and HTML
+
+```bash
+uv run pqc-inventory 10.0.0.0/24 -f text --cbom reports/network.cbom.json --html reports/network.html
+```
+
+One scan produces all three outputs.
+
+**CycloneDX 1.6 CBOM.** A cryptographic bill of materials in the OWASP CycloneDX
+standard, so other security tools can import the inventory. Each endpoint is a service,
+each protocol, algorithm, and certificate is a `cryptographic-asset` component with
+`nistQuantumSecurityLevel` and `classicalSecurityLevel` set, and the grading results
+travel as `pqc-inventory:` properties. Output is validated in CI against the official
+CycloneDX 1.6 JSON schema.
+
+**HTML report.** A single self-contained file for people who don't read JSON: a plain
+English summary, a timeline showing how many findings land on the 2030 and 2035 NIST
+deadlines, a migration plan that groups identical findings across endpoints so each fix
+is made once, and expandable per-endpoint details. Because SSH banners and certificate
+subjects come from servers that may be hostile, all content is HTML-escaped and the page
+carries a Content-Security-Policy that forbids scripts entirely. It works in dark mode,
+on phones, and in print.
+
+## Examples
+
+### Stock OpenSSH 9.6
 
 ```
 Verdict: WEAK
@@ -134,22 +168,7 @@ Server: SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.19
 OpenSSH is ahead of most of the web here: hybrid post-quantum key exchange has been
 its default since version 9.0.
 
-### Post-quantum detection requires OpenSSL 3.5+
-
-The tool's TLS library can't offer ML-KEM, so the post-quantum probe shells out to an
-OpenSSL 3.5+ binary and offers each hybrid group (X25519MLKEM768, SecP256r1MLKEM768,
-SecP384r1MLKEM1024) on its own. It looks for OpenSSL in this order: `--openssl PATH`, the
-`PQC_OPENSSL` environment variable, Homebrew's `openssl@3`, then `openssl` on your PATH.
-macOS's built-in `/usr/bin/openssl` is LibreSSL and is rejected automatically.
-
-```bash
-brew install openssl@3        # macOS
-```
-
-If no capable binary is found, the scan still runs and the report says the probe was
-skipped. It never reports "no post-quantum support" when it simply couldn't check.
-
-### Example: local server with hybrid PQ enabled
+### Local TLS server with hybrid PQ enabled
 
 ```
 Verdict: QUANTUM-VULNERABLE
@@ -167,7 +186,7 @@ Key exchange is protected, but the certificate is still classical. That's today'
 real-world state for PQ-enabled sites, since post-quantum certificates aren't yet
 widely deployed in the public WebPKI.
 
-### Example: github.com (September 2026)
+### github.com (September 2026)
 
 ```
 Verdict: QUANTUM-VULNERABLE
@@ -226,6 +245,45 @@ cryptographic inventory tool, evaluate these as well:
   from source code rather than from network traffic.
 - Commercial platforms such as IBM Quantum Safe, SandboxAQ AQtive Guard, and O3 Security
   cover discovery and migration planning at enterprise scale.
+
+### This project's focus
+
+- **Deadlines tied to security strength.** Each algorithm's classical strength is
+  computed per NIST SP 800-57, so RSA-2048 and DH-2048 land on the 2030 deprecation date
+  while P-256, X25519, and RSA-3072 land on the 2035 disallowance date.
+- **Harvest-now-decrypt-later prioritization.** Key exchange ranks above signatures, and
+  a classical group offered alongside ML-KEM is graded as a low-severity fallback rather
+  than as exposure.
+- **Treating scanned servers as untrusted input.** The SSH parser is tested against
+  hostile servers, OpenSSL is invoked without a shell and with validated hostnames, and
+  the HTML report escapes all server-supplied text under a script-blocking
+  Content-Security-Policy.
+- **Verifiable output.** The CBOM is validated against the official CycloneDX 1.6 schema
+  in CI, and a Docker lab of five servers reproduces every verdict the tool can produce.
+
+## Roadmap
+
+- [x] 1. TLS inventory for a single host
+- [x] 2. Policy engine: grade findings as broken / weak / quantum-vulnerable / quantum-ready
+- [x] 3. Hybrid post-quantum key exchange probe (X25519MLKEM768 via OpenSSL 3.5+)
+- [x] 4. SSH scanning (key exchange, host keys, ciphers, MACs, Terrapin)
+- [x] 5. CIDR range scanning with discovery, protocol auto-detection, and concurrency
+- [x] 6. CycloneDX 1.6 CBOM + HTML report with prioritized migration list
+- [x] 7. Docker demo lab, full test suite in CI on OpenSSL 3.5, GitHub Pages demo report
+
+## Development
+
+```bash
+uv sync --group dev
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+```
+
+The live post-quantum tests need OpenSSL 3.5+, and the live SSH test needs an sshd on
+127.0.0.1:2222; each is skipped when unavailable. CI runs the full suite on Debian 13,
+which ships OpenSSL 3.5, with a local sshd.
+
 ## Acknowledgments
 
 pqc-inventory is a thin layer over a lot of other people's work.
@@ -249,37 +307,7 @@ pqc-inventory is a thin layer over a lot of other people's work.
 
 Developed with assistance from Claude (Anthropic).
 
-### This project's focus
-
-- **Deadlines tied to security strength.** Each algorithm's classical strength is
-  computed per NIST SP 800-57, so RSA-2048 and DH-2048 land on the 2030 deprecation date
-  while P-256, X25519, and RSA-3072 land on the 2035 disallowance date.
-- **Harvest-now-decrypt-later prioritization.** Key exchange ranks above signatures, and
-  a classical group offered alongside ML-KEM is graded as a low-severity fallback rather
-  than as exposure.
-- **Treating scanned servers as untrusted input.** The SSH parser is tested against
-  hostile servers, OpenSSL is invoked without a shell and with validated hostnames, and
-  the HTML report escapes all server-supplied text under a script-blocking
-  Content-Security-Policy.
-- **Verifiable output.** The CBOM is validated against the official CycloneDX 1.6 schema
-  in CI, and a Docker lab of five servers reproduces every verdict the tool can produce.
-
-
-## Roadmap
-
-- [x] 1. TLS inventory for a single host
-- [x] 2. Policy engine: grade findings as broken / weak / quantum-vulnerable / quantum-ready
-- [x] 3. Hybrid post-quantum key exchange probe (X25519MLKEM768 via OpenSSL 3.5+)
-- [x] 4. SSH scanning (key exchange, host keys, ciphers, MACs, Terrapin)
-- [x] 5. CIDR range scanning with discovery, protocol auto-detection, and concurrency
-- [x] 6. CycloneDX 1.6 CBOM + HTML report with prioritized migration list
-- [x] 7. Docker demo lab, full test suite in CI on OpenSSL 3.5, GitHub Pages demo report
-
-## Authorized use
-
-Only scan systems you own or have written permission to test.
-
 ## License
 
-AGPL-3.0-only. pqc-inventory is built on SSLyze and nassl, which are licensed under
-the AGPL-3.0; see [LICENSE](LICENSE).
+AGPL-3.0-only; see [LICENSE](LICENSE). pqc-inventory is built on SSLyze and nassl, which
+are licensed under the AGPL-3.0.

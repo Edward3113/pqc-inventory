@@ -4,7 +4,8 @@ version = "1.0.0"
 description = "Cryptographic inventory scanner that grades TLS and SSH endpoints against NIST's post-quantum transition timeline."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 authors = [{ name = "Edward Sampson-Blue" }]
 dependencies = [
     "sslyze>=6.1,<7",
